@@ -6,6 +6,7 @@ on:
             - 'v*'
         branches:
             - 'main'
+            - 'build'
         paths:
             - '.github/workflows/build.yml'
             - '3rdparty/**'
@@ -423,7 +424,7 @@ jobs:
             - uses: nttld/setup-ndk@v1
               id: setup-ndk
               with:
-                  ndk-version: r27d
+                  ndk-version: r29
 
             - name: Export ANDROID_NDK_ROOT
               run: echo "ANDROID_NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
@@ -599,15 +600,27 @@ jobs:
                       [skip changelog]'
                   github_token: ${{ secrets.GITHUB_TOKEN }}
 
-    trigger_release:
-        if: ${{ needs.meta.outputs.is-release == 'true' && github.repository_id == '632024122' }}
+    release:
+        name: Publish Release
+        if: startsWith(github.ref, 'refs/tags/v')
         needs: [meta, windows, ubuntu, macos, android, nuget_pack, pip_pack, nodejs_pack]
         runs-on: ubuntu-latest
         steps:
-            - name: Trigger release workflow
-              env:
-                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: Download from GitHub
+              uses: actions/download-artifact@v8
+              with:
+                path: assets
+
+            - name: Clean up files
               run: |
-                  gh workflow run --repo $GITHUB_REPOSITORY release.yml \
-                    -f run-id="${{ github.run_id }}" \
-                    -f run-name="${{ needs.meta.outputs.tag }}" \
+                cd assets
+                for f in *; do
+                    (cd $f && zip -r ../$f-${{ needs.meta.outputs.tag }}.zip .)
+                done
+
+            - name: Publish release to GitHub
+              uses: softprops/action-gh-release@v3.0.0
+              with:
+                files: |
+                  assets/*.zip
+                prerelease: true
